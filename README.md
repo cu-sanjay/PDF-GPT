@@ -1,28 +1,154 @@
-# PDF-GPT | Chat With Your PDFs Using AI
+# PDF‑GPT · Chat With Your PDFs Using AI
 
-An advanced AI-powered Streamlit application that transforms how you interact with PDF documents. Perfect for students, researchers, and professionals who need to extract insights, generate summaries, and create study materials from their documents.
+> Deployed on Render free plan. If the service shows **Inactive**, it may take about 50 seconds to wake. Due to monthly quota limits, the service may be unavailable at times. If that happens, clone the repository, set your own Google Gemini API key in a **.env** file, and run locally. A short guide is included below.
 
-## 🚀 Features
+[![Open on Render](https://img.shields.io/badge/Open%20App-Render-3a3a3a)](https://chatwithpdf-289m.onrender.com/)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io)
 
-### Core Functionality
-- **📤 Multiple PDF Upload**: Process multiple PDF files simultaneously
-- **💬 AI-Powered Chat**: Ask questions about your documents using Google Gemini 2.0 Flash
-- **🔍 Smart Search**: FAISS-based vector similarity search for accurate answers
+## Try now
+<p align="center">
+  <a href="https://chatwithpdf-289m.onrender.com/">
+    <img src="https://github.com/user-attachments/assets/dcf43d6f-0509-4d64-911a-61feb2ddd3ea" alt="PDF‑GPT live demo" width="720" />
+  </a>
+</p>
 
-### AI-Powered Study Tools
-- **📋 Document Summarization**: Generate comprehensive summaries of your PDFs
-- **❓ Question Generation**: Create practice questions with instant answers
-- **📝 MCQ Creation**: Generate multiple-choice questions for testing
-- **📚 Study Notes**: Create organized, structured study materials
-- **⚡ Instant Answers**: Get immediate responses to any question about your documents
+## Overview
 
-### User Experience
-- **🎨 Modern UI**: Clean, professional interface with gradient styling
-- **📱 Responsive Design**: Works perfectly on desktop and mobile devices
-- **⚙️ Progress Tracking**: Real-time progress indicators during processing
-- **🛡️ Error Handling**: Comprehensive error handling with user-friendly messages
-- **🔒 Privacy First**: Documents processed securely and locally
+PDF‑GPT is a Streamlit application that lets you ask questions about your PDF files and generate summaries, practice questions, MCQs, and study notes. It uses Google Gemini for language reasoning, LangChain for text processing, and FAISS for vector search.
 
-## 📄 License
+## Key features
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### Core
+
+* Multiple PDF upload and processing
+* Chat over documents with Gemini
+* Vector search using FAISS for relevant answers
+
+### Study tools
+
+* Document summarisation
+* Question generation with answers
+* MCQ generation
+* Structured study notes
+* Instant answers for quick lookups
+
+## Architecture (high level)
+
+* **UI**: Streamlit
+* **PDF parsing**: PyPDF2 (text extraction)
+* **Indexing**: LangChain text splitters + FAISS vector store
+* **LLM**: Google Gemini (via google-generativeai and langchain-google-genai)
+* **Config**: .env for secrets and environment settings
+
+## Quick start
+
+### 1) Clone and set up
+
+```bash
+git clone https://github.com/cu-sanjay/PDF-GPT.git
+cd PDF-GPT
+
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### 2) Configure environment
+
+Create a `.env` file in the project root:
+
+```env
+# Required
+GOOGLE_API_KEY=your_google_ai_api_key
+
+# Optional
+GEMINI_MODEL=gemini-2.0-flash
+EMBEDDINGS_MODEL=text-embedding-004
+```
+
+Get a free Google AI API key from [Google AI Studio](https://makersuite.google.com/app/apikey).
+
+### 3) Run locally
+
+```bash
+# Option A
+streamlit run app.py
+
+# Option B (works even if streamlit is not on PATH)
+python -m streamlit run app.py
+```
+
+Open [http://localhost:8501](http://localhost:8501) in your browser.
+
+## Deployment
+
+### One‑click on Render
+
+Use the button below to deploy your own copy on Render. Set the `GOOGLE_API_KEY` environment variable in the Render dashboard.
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+
+**Start command** (Render):
+
+```bash
+python -m streamlit run app.py --server.address=0.0.0.0 --server.port=$PORT
+```
+
+**Environment variables** (Render):
+
+* `GOOGLE_API_KEY` (required)
+* `GEMINI_MODEL` (optional, default `gemini-2.0-flash`)
+* `EMBEDDINGS_MODEL` (optional, default `text-embedding-004`)
+
+### Streamlit Community Cloud
+
+1. Push the repository to GitHub.
+2. Create a new app on Streamlit Cloud and select this repo.
+3. Main file: `app.py`.
+4. Add secrets in **Settings → Secrets**:
+
+```toml
+GOOGLE_API_KEY = "your_google_ai_api_key"
+GEMINI_MODEL = "gemini-2.0-flash"
+EMBEDDINGS_MODEL = "text-embedding-004"
+```
+
+> Do not commit the real `.env`. Commit `.env.example` only.
+
+## Commands
+
+Local development:
+
+```bash
+python -m streamlit run app.py
+```
+
+Container or PaaS environments:
+
+```bash
+python -m streamlit run app.py --server.address=0.0.0.0 --server.port=${PORT:-8501}
+```
+
+## Requirements
+
+* Python 3.8 or later
+* A valid Google AI API key
+
+## Troubleshooting
+
+* **GOOGLE\_API\_KEY not found**: create a `.env` file or set the variable on the host platform.
+* **Streamlit not found**: run with `python -m streamlit run app.py` and ensure dependencies are installed.
+* **PDF cannot be read**: the file may be image‑only or password protected.
+* **No text extracted**: OCR is not included. Use text‑based PDFs or add OCR before upload.
+* **Large files**: split large PDFs or process fewer files at a time.
+* **Cold start on Render**: wait for the free instance to wake.
+
+## Security and privacy
+
+* PDFs are processed in memory during a session.
+* Do not commit confidential files or keys.
+* Review and follow your organisation policies when handling documents.
+
+## Acknowledgements
+
+The project uses Google Gemini, LangChain, FAISS, and Streamlit.
