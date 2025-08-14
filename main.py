@@ -9,6 +9,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
 import time
+import json
 
 # Load environment variables
 load_dotenv()
@@ -17,11 +18,11 @@ load_dotenv()
 try:
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        st.error("GOOGLE_API_KEY not found in environment variables")
+        st.error("🔑 GOOGLE_API_KEY not found in environment variables")
         st.stop()
     genai.configure(api_key=api_key)
 except Exception as e:
-    st.error(f"Error configuring Google AI: {str(e)}")
+    st.error(f"❌ Error configuring Google AI: {str(e)}")
     st.stop()
 
 def get_pdf_text(pdf_docs):
@@ -29,7 +30,7 @@ def get_pdf_text(pdf_docs):
     text = ""
     try:
         if not pdf_docs:
-            st.warning("Please upload at least one PDF file")
+            st.warning("📄 Please upload at least one PDF file")
             return ""
         
         for pdf in pdf_docs:
@@ -41,19 +42,19 @@ def get_pdf_text(pdf_docs):
                         if page_text:
                             text += page_text
                     except Exception as e:
-                        st.warning(f"Could not extract text from page {page_num + 1} of {pdf.name}")
+                        st.warning(f"⚠️ Could not extract text from page {page_num + 1} of {pdf.name}")
                         continue
             except Exception as e:
-                st.error(f"Error reading PDF {pdf.name}: {str(e)}")
+                st.error(f"❌ Error reading PDF {pdf.name}: {str(e)}")
                 continue
         
         if not text.strip():
-            st.error("No text could be extracted from the uploaded PDFs")
+            st.error("❌ No text could be extracted from the uploaded PDFs")
             return ""
             
         return text
     except Exception as e:
-        st.error(f"Error processing PDFs: {str(e)}")
+        st.error(f"❌ Error processing PDFs: {str(e)}")
         return ""
 
 def get_text_chunks(text):
@@ -69,19 +70,19 @@ def get_text_chunks(text):
         chunks = text_splitter.split_text(text)
         
         if not chunks:
-            st.error("Could not create text chunks from the extracted text")
+            st.error("❌ Could not create text chunks from the extracted text")
             return []
             
         return chunks
     except Exception as e:
-        st.error(f"Error creating text chunks: {str(e)}")
+        st.error(f"❌ Error creating text chunks: {str(e)}")
         return []
 
 def get_vector_store(text_chunks):
     """Create and save vector store with error handling"""
     try:
         if not text_chunks:
-            st.error("No text chunks available to create vector store")
+            st.error("❌ No text chunks available to create vector store")
             return False
         
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
@@ -89,11 +90,11 @@ def get_vector_store(text_chunks):
         vector_store.save_local("faiss_index")
         return True
     except Exception as e:
-        st.error(f"Error creating vector store: {str(e)}")
+        st.error(f"❌ Error creating vector store: {str(e)}")
         return False
 
 def get_conversational_chain():
-    """Create conversational chain with error handling using modern approach"""
+    """Create conversational chain with error handling using Gemini 2.5 Flash"""
     try:
         prompt_template = """
         Answer the question as detailed as possible from the provided context. Make sure to provide all the details.
@@ -109,7 +110,7 @@ def get_conversational_chain():
         """
 
         model = ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash",
+            model="gemini-2.0-flash-exp",
             temperature=0.3
         )
 
@@ -120,34 +121,250 @@ def get_conversational_chain():
         
         return model, prompt
     except Exception as e:
-        st.error(f"Error creating conversational chain: {str(e)}")
+        st.error(f"❌ Error creating conversational chain: {str(e)}")
         return None, None
+
+def summarize_pdf():
+    """Generate PDF summary"""
+    try:
+        if not os.path.exists("faiss_index"):
+            st.error("📄 Please upload and process PDF files first")
+            return
+        
+        with st.spinner("📝 Generating summary..."):
+            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+            
+            # Get all documents for summary
+            docs = new_db.similarity_search("summary main points key information", k=10)
+            
+            if not docs:
+                st.warning("⚠️ No content found for summarization")
+                return
+            
+            model, _ = get_conversational_chain()
+            if not model:
+                return
+            
+            context = "\n\n".join([doc.page_content for doc in docs])
+            summary_prompt = f"""
+            Please provide a comprehensive summary of the following document content. 
+            Include the main points, key findings, and important information:
+
+            {context}
+
+            Summary:
+            """
+            
+            response = model.invoke(summary_prompt)
+            
+            if response and hasattr(response, 'content'):
+                st.success("✅ Summary generated!")
+                st.markdown("### 📋 Document Summary")
+                st.write(response.content)
+            else:
+                st.error("❌ Could not generate summary")
+                
+    except Exception as e:
+        st.error(f"❌ Error generating summary: {str(e)}")
+
+def generate_questions():
+    """Generate questions from PDF content"""
+    try:
+        if not os.path.exists("faiss_index"):
+            st.error("📄 Please upload and process PDF files first")
+            return
+        
+        with st.spinner("❓ Generating questions..."):
+            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+            
+            docs = new_db.similarity_search("main topics concepts important information", k=8)
+            
+            if not docs:
+                st.warning("⚠️ No content found for question generation")
+                return
+            
+            model, _ = get_conversational_chain()
+            if not model:
+                return
+            
+            context = "\n\n".join([doc.page_content for doc in docs])
+            questions_prompt = f"""
+            Based on the following document content, generate 8-10 thoughtful questions that would help someone understand the key concepts and important information. 
+            Make the questions clear and specific:
+
+            {context}
+
+            Questions:
+            """
+            
+            response = model.invoke(questions_prompt)
+            
+            if response and hasattr(response, 'content'):
+                st.success("✅ Questions generated!")
+                st.markdown("### ❓ Practice Questions")
+                
+                questions = response.content.split('\n')
+                questions = [q.strip() for q in questions if q.strip() and ('?' in q or q.strip().endswith('.'))]
+                
+                for i, question in enumerate(questions[:10], 1):
+                    question = question.lstrip('0123456789.- ')
+                    st.markdown(f"**{i}.** {question}")
+                    
+                    if st.button(f"Get Answer", key=f"answer_{i}"):
+                        answer_question(question)
+            else:
+                st.error("❌ Could not generate questions")
+                
+    except Exception as e:
+        st.error(f"❌ Error generating questions: {str(e)}")
+
+def generate_mcqs():
+    """Generate multiple choice questions"""
+    try:
+        if not os.path.exists("faiss_index"):
+            st.error("📄 Please upload and process PDF files first")
+            return
+        
+        with st.spinner("📝 Generating MCQs..."):
+            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+            
+            docs = new_db.similarity_search("key concepts important facts definitions", k=6)
+            
+            if not docs:
+                st.warning("⚠️ No content found for MCQ generation")
+                return
+            
+            model, _ = get_conversational_chain()
+            if not model:
+                return
+            
+            context = "\n\n".join([doc.page_content for doc in docs])
+            mcq_prompt = f"""
+            Based on the following document content, create 5 multiple choice questions with 4 options each (A, B, C, D). 
+            Include the correct answer at the end. Format each question clearly:
+
+            {context}
+
+            MCQs:
+            """
+            
+            response = model.invoke(mcq_prompt)
+            
+            if response and hasattr(response, 'content'):
+                st.success("✅ MCQs generated!")
+                st.markdown("### 📝 Multiple Choice Questions")
+                st.write(response.content)
+            else:
+                st.error("❌ Could not generate MCQs")
+                
+    except Exception as e:
+        st.error(f"❌ Error generating MCQs: {str(e)}")
+
+def generate_notes():
+    """Generate short notes from PDF"""
+    try:
+        if not os.path.exists("faiss_index"):
+            st.error("📄 Please upload and process PDF files first")
+            return
+        
+        with st.spinner("📚 Generating notes..."):
+            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+            
+            docs = new_db.similarity_search("main concepts key points important information", k=8)
+            
+            if not docs:
+                st.warning("⚠️ No content found for notes generation")
+                return
+            
+            model, _ = get_conversational_chain()
+            if not model:
+                return
+            
+            context = "\n\n".join([doc.page_content for doc in docs])
+            notes_prompt = f"""
+            Create concise, well-organized study notes from the following content. 
+            Use bullet points, headings, and clear structure. Focus on key concepts and important information:
+
+            {context}
+
+            Study Notes:
+            """
+            
+            response = model.invoke(notes_prompt)
+            
+            if response and hasattr(response, 'content'):
+                st.success("✅ Notes generated!")
+                st.markdown("### 📚 Study Notes")
+                st.write(response.content)
+            else:
+                st.error("❌ Could not generate notes")
+                
+    except Exception as e:
+        st.error(f"❌ Error generating notes: {str(e)}")
+
+def answer_question(question):
+    """Answer a specific question"""
+    try:
+        if not os.path.exists("faiss_index"):
+            st.error("📄 Please upload and process PDF files first")
+            return
+        
+        with st.spinner("🔍 Finding answer..."):
+            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+            docs = new_db.similarity_search(question)
+            
+            if not docs:
+                st.warning("⚠️ No relevant information found")
+                return
+            
+            model, prompt = get_conversational_chain()
+            if not model or not prompt:
+                return
+            
+            context = "\n\n".join([doc.page_content for doc in docs])
+            formatted_prompt = prompt.format(context=context, question=question)
+            
+            response = model.invoke(formatted_prompt)
+            
+            if response and hasattr(response, 'content'):
+                st.success("✅ Answer found!")
+                st.write("**Answer:**")
+                st.write(response.content)
+            else:
+                st.error("❌ Could not generate answer")
+                
+    except Exception as e:
+        st.error(f"❌ Error answering question: {str(e)}")
 
 def user_input(user_question):
     """Process user question and generate response with error handling"""
     try:
         if not user_question.strip():
-            st.warning("Please enter a question")
+            st.warning("⚠️ Please enter a question")
             return
         
-        # Check if vector store exists
         if not os.path.exists("faiss_index"):
-            st.error("Please upload and process PDF files first")
+            st.error("📄 Please upload and process PDF files first")
             return
         
-        with st.spinner("Searching for answer..."):
+        with st.spinner("🔍 Searching for answer..."):
             embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
             
             try:
                 new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
             except Exception as e:
-                st.error("Error loading vector store. Please reprocess your PDFs.")
+                st.error("❌ Error loading vector store. Please reprocess your PDFs.")
                 return
             
             docs = new_db.similarity_search(user_question)
             
             if not docs:
-                st.warning("No relevant information found in the uploaded documents")
+                st.warning("⚠️ No relevant information found in the uploaded documents")
                 return
             
             model, prompt = get_conversational_chain()
@@ -161,79 +378,138 @@ def user_input(user_question):
                 response = model.invoke(formatted_prompt)
                 
                 if response and hasattr(response, 'content'):
-                    st.success("Answer found!")
+                    st.success("✅ Answer found!")
                     st.write("**Reply:**")
                     st.write(response.content)
                 else:
-                    st.error("Could not generate a response")
+                    st.error("❌ Could not generate a response")
             except Exception as e:
-                st.error(f"Error generating response: {str(e)}")
+                st.error(f"❌ Error generating response: {str(e)}")
                 
     except Exception as e:
-        st.error(f"Error processing question: {str(e)}")
+        st.error(f"❌ Error processing question: {str(e)}")
 
 def main():
     """Main application function"""
-    # Page configuration
     st.set_page_config(
-        page_title="PDF Chat Assistant",
-        page_icon="📄",
+        page_title="PDF-GPT | Chat With Your PDFs",
+        page_icon="🤖",
         layout="wide",
         initial_sidebar_state="expanded"
     )
     
-    # Custom CSS for better styling
     st.markdown("""
     <style>
     .main-header {
         text-align: center;
-        color: #1f77b4;
-        font-size: 2.5rem;
-        margin-bottom: 1rem;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 3.5rem;
+        font-weight: bold;
+        margin-bottom: 0.5rem;
     }
     .sub-header {
         text-align: center;
         color: #666;
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+    }
+    .tagline {
+        text-align: center;
+        color: #888;
+        font-style: italic;
         margin-bottom: 2rem;
     }
     .sidebar-header {
-        color: #1f77b4;
+        color: #667eea;
         font-size: 1.5rem;
+        font-weight: bold;
         margin-bottom: 1rem;
     }
-    .success-message {
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
-        border-radius: 0.25rem;
-        padding: 0.75rem;
+    .feature-button {
+        margin: 0.25rem;
+        width: 100%;
+    }
+    .stButton > button {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 0.5rem 1rem;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    .info-box {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 1rem;
+        border-radius: 10px;
         margin: 1rem 0;
+        border-left: 4px solid #667eea;
     }
     </style>
     """, unsafe_allow_html=True)
     
-    # Main header
-    st.markdown('<h1 class="main-header">PDF Chat Assistant</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Ask questions about your PDF documents using AI</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">PDF-GPT</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Chat With Your PDFs Using AI</p>', unsafe_allow_html=True)
+    st.markdown('<p class="tagline">Perfect for Students • Researchers • Professionals</p>', unsafe_allow_html=True)
     
-    # Question input
-    st.markdown("### Ask a Question")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.markdown('<div class="info-box">📚 <b>Study Smarter</b><br>Generate summaries and notes</div>', unsafe_allow_html=True)
+    with col2:
+        st.markdown('<div class="info-box">🔍 <b>Research Faster</b><br>Ask questions instantly</div>', unsafe_allow_html=True)
+    with col3:
+        st.markdown('<div class="info-box">📝 <b>Practice Better</b><br>Generate questions & MCQs</div>', unsafe_allow_html=True)
+    with col4:
+        st.markdown('<div class="info-box">⚡ <b>Save Time</b><br>Extract key information quickly</div>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    st.markdown("### 🚀 AI-Powered Features")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("📋 Summarize PDF", use_container_width=True):
+            summarize_pdf()
+    
+    with col2:
+        if st.button("❓ Generate Questions", use_container_width=True):
+            generate_questions()
+    
+    with col3:
+        if st.button("📝 Create MCQs", use_container_width=True):
+            generate_mcqs()
+    
+    with col4:
+        if st.button("📚 Generate Notes", use_container_width=True):
+            generate_notes()
+    
+    st.markdown("---")
+    
+    # Question input section
+    st.markdown("### 💬 Ask Questions About Your PDFs")
     user_question = st.text_input(
-        "Enter your question about the uploaded PDF files:",
-        placeholder="What is the main topic discussed in the document?",
-        help="Type your question and press Enter"
+        "Enter your question:",
+        placeholder="What are the main findings in this research paper?",
+        help="Ask any question about your uploaded documents"
     )
     
     if user_question:
         user_input(user_question)
     
-    # Sidebar for file upload
     with st.sidebar:
-        st.markdown('<h2 class="sidebar-header">Document Upload</h2>', unsafe_allow_html=True)
+        st.markdown('<h2 class="sidebar-header">📁 Document Upload</h2>', unsafe_allow_html=True)
         
-        st.markdown("**Instructions:**")
-        st.markdown("1. Upload one or more PDF files")
-        st.markdown("2. Click 'Process Documents'")
-        st.markdown("3. Ask questions about your documents")
+        st.markdown("**Quick Start Guide:**")
+        st.markdown("1. 📤 Upload your PDF files")
+        st.markdown("2. ⚙️ Click 'Process Documents'")
+        st.markdown("3. 🚀 Use AI features or ask questions")
         
         st.markdown("---")
         
@@ -241,54 +517,61 @@ def main():
             "Choose PDF files",
             accept_multiple_files=True,
             type=['pdf'],
-            help="Upload PDF files to analyze"
+            help="Upload one or more PDF files to analyze"
         )
         
         if pdf_docs:
-            st.success(f"Uploaded {len(pdf_docs)} file(s)")
+            st.success(f"✅ Uploaded {len(pdf_docs)} file(s)")
             for pdf in pdf_docs:
                 st.write(f"📄 {pdf.name}")
         
-        if st.button("Process Documents", type="primary", use_container_width=True):
+        if st.button("⚙️ Process Documents", type="primary", use_container_width=True):
             if not pdf_docs:
-                st.error("Please upload at least one PDF file")
+                st.error("❌ Please upload at least one PDF file")
             else:
-                with st.spinner("Processing documents..."):
+                with st.spinner("⚙️ Processing documents..."):
                     progress_bar = st.progress(0)
                     
-                    # Extract text
                     progress_bar.progress(25)
                     raw_text = get_pdf_text(pdf_docs)
                     
                     if raw_text:
-                        # Create chunks
                         progress_bar.progress(50)
                         text_chunks = get_text_chunks(raw_text)
                         
                         if text_chunks:
-                            # Create vector store
                             progress_bar.progress(75)
                             success = get_vector_store(text_chunks)
                             
                             progress_bar.progress(100)
                             
                             if success:
-                                st.success("Documents processed successfully!")
+                                st.success("✅ Documents processed successfully!")
                                 st.balloons()
                             else:
-                                st.error("Failed to process documents")
+                                st.error("❌ Failed to process documents")
                         else:
-                            st.error("Failed to create text chunks")
+                            st.error("❌ Failed to create text chunks")
                     else:
-                        st.error("Failed to extract text from PDFs")
+                        st.error("❌ Failed to extract text from PDFs")
                     
                     progress_bar.empty()
         
-        # Information section
         st.markdown("---")
-        st.markdown("**About this app:**")
-        st.markdown("This application uses Google's Gemini AI to answer questions about your PDF documents.")
-        st.markdown("Your documents are processed locally and securely.")
+        
+        st.markdown("### ℹ️ About PDF-GPT")
+        st.markdown("**Created by:** Sanjay")
+        st.markdown("**Description:** An AI-powered tool that helps you chat with your PDF documents, generate summaries, create study materials, and extract key information instantly.")
+        
+        st.markdown("**🔗 Links:**")
+        st.markdown("• [📂 GitHub Repository](https://github.com/cu-sanjay/PDF-GPT)")
+        st.markdown("• [🐛 Report Issues](https://github.com/cu-sanjay/PDF-GPT/issues)")
+        
+        st.markdown("---")
+        
+        st.markdown("**🤖 AI Model:** Google Gemini 2.0 Flash")
+        st.markdown("**🔒 Privacy:** Your documents are processed securely and locally")
+        st.markdown("**💡 Tip:** Upload research papers, textbooks, or any PDF documents to get started!")
 
 if __name__ == "__main__":
     main()
