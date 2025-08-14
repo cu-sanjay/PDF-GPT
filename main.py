@@ -4,9 +4,8 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 import os
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 import google.generativeai as genai
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
 import time
@@ -94,7 +93,7 @@ def get_vector_store(text_chunks):
         return False
 
 def get_conversational_chain():
-    """Create conversational chain with error handling"""
+    """Create conversational chain with error handling using modern approach"""
     try:
         prompt_template = """
         Answer the question as detailed as possible from the provided context. Make sure to provide all the details.
@@ -110,7 +109,7 @@ def get_conversational_chain():
         """
 
         model = ChatGoogleGenerativeAI(
-            model="gemini-pro",
+            model="gemini-1.5-flash",
             temperature=0.3
         )
 
@@ -118,11 +117,11 @@ def get_conversational_chain():
             template=prompt_template, 
             input_variables=["context", "question"]
         )
-        chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
-        return chain
+        
+        return model, prompt
     except Exception as e:
         st.error(f"Error creating conversational chain: {str(e)}")
-        return None
+        return None, None
 
 def user_input(user_question):
     """Process user question and generate response with error handling"""
@@ -151,21 +150,24 @@ def user_input(user_question):
                 st.warning("No relevant information found in the uploaded documents")
                 return
             
-            chain = get_conversational_chain()
-            if not chain:
+            model, prompt = get_conversational_chain()
+            if not model or not prompt:
                 return
             
-            response = chain(
-                {"input_documents": docs, "question": user_question},
-                return_only_outputs=True
-            )
+            context = "\n\n".join([doc.page_content for doc in docs])
+            formatted_prompt = prompt.format(context=context, question=user_question)
             
-            if response and "output_text" in response:
-                st.success("Answer found!")
-                st.write("**Reply:**")
-                st.write(response["output_text"])
-            else:
-                st.error("Could not generate a response")
+            try:
+                response = model.invoke(formatted_prompt)
+                
+                if response and hasattr(response, 'content'):
+                    st.success("Answer found!")
+                    st.write("**Reply:**")
+                    st.write(response.content)
+                else:
+                    st.error("Could not generate a response")
+            except Exception as e:
+                st.error(f"Error generating response: {str(e)}")
                 
     except Exception as e:
         st.error(f"Error processing question: {str(e)}")
