@@ -1,9 +1,10 @@
-# PDF‑GPT · Chat With Your PDFs Using AI
+# PDF‑GPT v2.0 · Chat With Your PDFs Using AI
 
-> Deployed on Render free plan. If the service shows **Inactive**, it may take about 50 seconds to wake. Due to monthly quota limits, the service may be unavailable at times. If that happens, clone the repository, set your own Google Gemini API key in a **.env** file, and run locally. A short guide is included below.
+> **What's New in v2.0:** Performance optimization with caching, export functionality, chat history and improved error handling.
 
 [![Open on Render](https://img.shields.io/badge/Open%20App-Render-3a3a3a)](https://chatwithpdf-289m.onrender.com/)
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io)
+[![Version](https://img.shields.io/badge/version-2.0-blue)](https://github.com/cu-sanjay/PDF-GPT)
 
 ## Try now
 <p align="center">
@@ -14,23 +15,34 @@
 
 ## Overview
 
-PDF‑GPT is a Streamlit application that lets you ask questions about your PDF files and generate summaries, practice questions, MCQs, and study notes. It uses Google Gemini for language reasoning, LangChain for text processing, and FAISS for vector search.
+PDF‑GPT v2.0 is a professional Streamlit application that lets you ask questions about your PDF files and generate summaries, practice questions, MCQs, and study notes. It uses Google Gemini 2.0 Flash for language reasoning, LangChain for text processing, and FAISS for vector search. Version 2.0 features a complete UI overhaul, performance optimizations, and new export capabilities.
 
-## Key features
+## Key Features
 
-### Core
+### Core Features
 
 * Multiple PDF upload and processing
-* Chat over documents with Gemini
+* Chat over documents with Gemini 2.0 Flash
 * Vector search using FAISS for relevant answers
+* **[NEW]** Chat history with conversation tracking
+* **[NEW]** Session state management
 
-### Study tools
+### Study Tools
 
-* Document summarisation
+* Document summarization
 * Question generation with answers
 * MCQ generation
 * Structured study notes
 * Instant answers for quick lookups
+* **[NEW]** Export functionality (download summaries, notes, MCQs as text files)
+
+### v2.0 Improvements
+
+* **Performance Optimization:** Model and embeddings caching for faster responses
+* **Better UX:** Improved error messages and user feedback
+* **Export Capability:** Download generated content as text files
+* **Chat History:** View previous Q&A sessions
+* **Code Quality:** Removed unused imports, cleaner code structure
 
 ## Architecture (high level)
 
