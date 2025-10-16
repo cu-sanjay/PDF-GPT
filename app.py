@@ -8,13 +8,11 @@ from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
-import time
-import json
+from datetime import datetime
+import io
 
-# Load environment variables
 load_dotenv()
 
-# Configure Google AI
 try:
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
@@ -24,6 +22,26 @@ try:
 except Exception as e:
     st.error(f"❌ Error configuring Google AI: {str(e)}")
     st.stop()
+
+@st.cache_resource
+def get_embeddings():
+    """Get cached embeddings model"""
+    return GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+
+@st.cache_resource
+def get_llm_model():
+    """Get cached LLM model"""
+    return ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash-exp",
+        temperature=0.3
+    )
+
+def init_session_state():
+    """Initialize session state variables"""
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = []
+    if 'generated_content' not in st.session_state:
+        st.session_state.generated_content = {}
 
 def get_pdf_text(pdf_docs):
     """Extract text from uploaded PDF files with error handling"""
@@ -85,7 +103,7 @@ def get_vector_store(text_chunks):
             st.error("❌ No text chunks available to create vector store")
             return False
         
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+        embeddings = get_embeddings()
         vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
         vector_store.save_local("faiss_index")
         return True
@@ -94,7 +112,7 @@ def get_vector_store(text_chunks):
         return False
 
 def get_conversational_chain():
-    """Create conversational chain with error handling using Gemini 2.5 Flash"""
+    """Create conversational chain with error handling"""
     try:
         prompt_template = """
         Answer the question as detailed as possible from the provided context. Make sure to provide all the details.
@@ -109,11 +127,7 @@ def get_conversational_chain():
         Answer:
         """
 
-        model = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-exp",
-            temperature=0.3
-        )
-
+        model = get_llm_model()
         prompt = PromptTemplate(
             template=prompt_template, 
             input_variables=["context", "question"]
@@ -124,6 +138,19 @@ def get_conversational_chain():
         st.error(f"❌ Error creating conversational chain: {str(e)}")
         return None, None
 
+def create_download_link(content, filename, label):
+    """Create a download button for content"""
+    buffer = io.BytesIO()
+    buffer.write(content.encode())
+    buffer.seek(0)
+    
+    st.download_button(
+        label=label,
+        data=buffer,
+        file_name=filename,
+        mime="text/plain"
+    )
+
 def summarize_pdf():
     """Generate PDF summary"""
     try:
@@ -132,10 +159,9 @@ def summarize_pdf():
             return
         
         with st.spinner("📝 Generating summary..."):
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            embeddings = get_embeddings()
             new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
             
-            # Get all documents for summary
             docs = new_db.similarity_search("summary main points key information", k=10)
             
             if not docs:
@@ -162,6 +188,9 @@ def summarize_pdf():
                 st.success("✅ Summary generated!")
                 st.markdown("### 📋 Document Summary")
                 st.write(response.content)
+                st.info("💡 Scroll down to download your summary")
+                
+                st.session_state.generated_content['summary'] = response.content
             else:
                 st.error("❌ Could not generate summary")
                 
@@ -176,7 +205,7 @@ def generate_questions():
             return
         
         with st.spinner("❓ Generating questions..."):
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            embeddings = get_embeddings()
             new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
             
             docs = new_db.similarity_search("main topics concepts important information", k=8)
@@ -214,6 +243,9 @@ def generate_questions():
                     
                     if st.button(f"Get Answer", key=f"answer_{i}"):
                         answer_question(question)
+                
+                st.info("💡 Scroll down to download your questions")
+                st.session_state.generated_content['questions'] = response.content
             else:
                 st.error("❌ Could not generate questions")
                 
@@ -228,7 +260,7 @@ def generate_mcqs():
             return
         
         with st.spinner("📝 Generating MCQs..."):
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            embeddings = get_embeddings()
             new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
             
             docs = new_db.similarity_search("key concepts important facts definitions", k=6)
@@ -257,6 +289,9 @@ def generate_mcqs():
                 st.success("✅ MCQs generated!")
                 st.markdown("### 📝 Multiple Choice Questions")
                 st.write(response.content)
+                st.info("💡 Scroll down to download your MCQs")
+                
+                st.session_state.generated_content['mcqs'] = response.content
             else:
                 st.error("❌ Could not generate MCQs")
                 
@@ -271,7 +306,7 @@ def generate_notes():
             return
         
         with st.spinner("📚 Generating notes..."):
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            embeddings = get_embeddings()
             new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
             
             docs = new_db.similarity_search("main concepts key points important information", k=8)
@@ -300,6 +335,9 @@ def generate_notes():
                 st.success("✅ Notes generated!")
                 st.markdown("### 📚 Study Notes")
                 st.write(response.content)
+                st.info("💡 Scroll down to download your notes")
+                
+                st.session_state.generated_content['notes'] = response.content
             else:
                 st.error("❌ Could not generate notes")
                 
@@ -314,7 +352,7 @@ def answer_question(question):
             return
         
         with st.spinner("🔍 Finding answer..."):
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            embeddings = get_embeddings()
             new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
             docs = new_db.similarity_search(question)
             
@@ -353,7 +391,7 @@ def user_input(user_question):
             return
         
         with st.spinner("🔍 Searching for answer..."):
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            embeddings = get_embeddings()
             
             try:
                 new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
@@ -381,6 +419,12 @@ def user_input(user_question):
                     st.success("✅ Answer found!")
                     st.write("**Reply:**")
                     st.write(response.content)
+                    
+                    st.session_state.chat_history.append({
+                        'question': user_question,
+                        'answer': response.content,
+                        'timestamp': datetime.now()
+                    })
                 else:
                     st.error("❌ Could not generate a response")
             except Exception as e:
@@ -398,63 +442,68 @@ def main():
         initial_sidebar_state="expanded"
     )
     
+    init_session_state()
+    
     st.markdown("""
     <style>
     .main-header {
         text-align: center;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-size: 3.5rem;
-        font-weight: bold;
+        color: #2E3440;
+        font-size: 3rem;
+        font-weight: 700;
         margin-bottom: 0.5rem;
     }
     .sub-header {
         text-align: center;
-        color: #666;
+        color: #4C566A;
         font-size: 1.2rem;
         margin-bottom: 1rem;
+        font-weight: 400;
     }
     .tagline {
         text-align: center;
-        color: #888;
+        color: #5E81AC;
         font-style: italic;
         margin-bottom: 2rem;
+        font-size: 1rem;
     }
     .sidebar-header {
-        color: #667eea;
+        color: #2E3440;
         font-size: 1.5rem;
-        font-weight: bold;
+        font-weight: 600;
         margin-bottom: 1rem;
     }
-    .feature-button {
-        margin: 0.25rem;
-        width: 100%;
-    }
     .stButton > button {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        background-color: #5E81AC;
         color: white;
         border: none;
-        border-radius: 10px;
+        border-radius: 6px;
         padding: 0.5rem 1rem;
-        font-weight: bold;
-        transition: all 0.3s ease;
+        font-weight: 500;
+        transition: all 0.2s ease;
     }
     .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        background-color: #81A1C1;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .info-box {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        background-color: #ECEFF4;
         padding: 1rem;
-        border-radius: 10px;
+        border-radius: 8px;
         margin: 1rem 0;
-        border-left: 4px solid #667eea;
+        border-left: 4px solid #5E81AC;
+    }
+    .chat-message {
+        background-color: #E5E9F0;
+        padding: 0.8rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+        border-left: 3px solid #88C0D0;
     }
     </style>
     """, unsafe_allow_html=True)
     
-    st.markdown('<h1 class="main-header">PDF-GPT</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">PDF-GPT v2.0</h1>', unsafe_allow_html=True)
     st.markdown('<p class="sub-header">Chat With Your PDFs Using AI</p>', unsafe_allow_html=True)
     st.markdown('<p class="tagline">Perfect for Students • Researchers • Professionals</p>', unsafe_allow_html=True)
     
@@ -492,7 +541,6 @@ def main():
     
     st.markdown("---")
     
-    # Question input section
     st.markdown("### 💬 Ask Questions About Your PDFs")
     user_question = st.text_input(
         "Enter your question:",
@@ -502,6 +550,48 @@ def main():
     
     if user_question:
         user_input(user_question)
+    
+    if st.session_state.chat_history:
+        with st.expander("📜 Chat History", expanded=False):
+            for i, chat in enumerate(reversed(st.session_state.chat_history[-5:])):
+                st.markdown(f'<div class="chat-message"><b>Q:</b> {chat["question"]}<br><b>A:</b> {chat["answer"][:200]}...</div>', unsafe_allow_html=True)
+    
+    if st.session_state.generated_content:
+        st.markdown("---")
+        st.markdown("### 📥 Download Generated Content")
+        
+        cols = st.columns(4)
+        if 'summary' in st.session_state.generated_content:
+            with cols[0]:
+                create_download_link(
+                    st.session_state.generated_content['summary'],
+                    f"summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                    "📋 Download Summary"
+                )
+        
+        if 'questions' in st.session_state.generated_content:
+            with cols[1]:
+                create_download_link(
+                    st.session_state.generated_content['questions'],
+                    f"questions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                    "❓ Download Questions"
+                )
+        
+        if 'mcqs' in st.session_state.generated_content:
+            with cols[2]:
+                create_download_link(
+                    st.session_state.generated_content['mcqs'],
+                    f"mcqs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                    "📝 Download MCQs"
+                )
+        
+        if 'notes' in st.session_state.generated_content:
+            with cols[3]:
+                create_download_link(
+                    st.session_state.generated_content['notes'],
+                    f"notes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                    "📚 Download Notes"
+                )
     
     with st.sidebar:
         st.markdown('<h2 class="sidebar-header">📁 Document Upload</h2>', unsafe_allow_html=True)
@@ -559,13 +649,23 @@ def main():
         
         st.markdown("---")
         
-        st.markdown("### ℹ️ About PDF-GPT")
+        st.markdown("### ℹ️ About PDF-GPT v2.0")
         st.markdown("**Created by:** Sanjay")
+        st.markdown("**Version:** 2.0")
         st.markdown("**Description:** An AI-powered tool that helps you chat with your PDF documents, generate summaries, create study materials, and extract key information instantly.")
         
         st.markdown("**🔗 Links:**")
         st.markdown("• [📂 GitHub Repository](https://github.com/cu-sanjay/PDF-GPT)")
         st.markdown("• [🐛 Report Issues](https://github.com/cu-sanjay/PDF-GPT/issues)")
+        
+        st.markdown("---")
+        
+        st.markdown("**🆕 What's New in v2.0:**")
+        st.markdown("• Professional UI design")
+        st.markdown("• Performance improvements")
+        st.markdown("• Export functionality")
+        st.markdown("• Chat history")
+        st.markdown("• Better error handling")
         
         st.markdown("---")
         

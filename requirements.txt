@@ -6,3 +6,4 @@ langchain-google-genai
 google-generativeai
 faiss-cpu
 python-dotenv
+streamlit
